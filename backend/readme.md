@@ -1,0 +1,1 @@
+Word List is from http://wordlist.aspell.net/12dicts/ specifically is the 2of4brif.txt
