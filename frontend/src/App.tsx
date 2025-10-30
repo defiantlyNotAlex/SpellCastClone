@@ -45,7 +45,7 @@ const copy_board = <T,>(board: T[][]): T[][] => {
 const board_from_json = (board: {board: number[][]}): number[][] => {
   return board.board.map((row, _y) => {
     return row.map((val, _x) => {
-      return val - 97;
+      return val;
     });
   });
 }
@@ -54,18 +54,40 @@ const false_board = [[false, false, false, false, false, false], [false, false, 
 
 function App() {
   const [board, setBoard] = useState<number[][]>([[0, 1, 2, 3, 4, 5], [6, 7, 8, 9, 10, 11], [12, 13, 14, 15, 16, 17], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]])
-  const [_doubleLetter, _setDoubleLetter] = useState<number[] | null>([0, 0])
-  const [_doubleWord, _setDoubleWord] = useState<number[] | null>(null)
+  const [_doubleLetter, setDoubleLetter] = useState<number[] | null>([0, 0])
+  const [_doubleWord, setDoubleWord] = useState<number[] | null>(null)
   const [current_word, setCurrentWord] = useState("")
   const [used, setUsed] = useState<boolean[][]>(false_board)
   const [last_pos, setLastPos] = useState<Position | undefined>()
   const [path, setPath] = useState<Position[]>([])
+  const [_ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
     fetch('http://localhost:8080/board')
       .then(response => response.json())
+      .then(json => {console.log(json); return json})
       .then(json => setBoard(board_from_json(json)))
       .catch(error => console.error(error));
+  }, []);
+
+
+  useEffect(() => {
+    const websocket = new WebSocket('http://localhost:8080/join');
+    setWs(websocket);
+
+    websocket.onopen = () => console.log('Connected to WebSocket server');
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      console.log(data)
+
+      setBoard(data.boardInfo.board)
+      setDoubleLetter(data.boardInfo.doubleLetter)
+      setDoubleWord(data.boardInfo.doubleWord)
+    };
+    websocket.onclose = () => console.log('Disconnected from WebSocket server');
+
+    // Cleanup on unmount
+    return () => websocket.close();
   }, []);
 
   return (

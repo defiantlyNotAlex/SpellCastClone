@@ -34,26 +34,36 @@ func PositionRand() Position {
 	return Position{X: rand.Intn(6), Y: rand.Intn(6)}
 }
 
-type Path []Position
-type Board [6][6]rune
+type Letter int
 
-var game Game
+var gameInfo GameInfo
 
-type Game struct {
-	board Board
-	dl    Position
-	dw    Position
-
-	letter_multiplier_3x bool
-
-	turn         int
-	playerCount  int
-	playerScores []int
+type GameInfo struct {
+	BoardInfo struct {
+		Board            [6][6]Letter `json:"board"`
+		DoubleLetter     Position     `json:"doubleLetter"`
+		DoubleWord       Position     `json:"doubleWord"`
+		DoubleLetterMult int          `json:"doubleLetterMult"`
+	} `json:"boardInfo"`
+	PlayerInfo struct {
+		PlayerNames  []string `json:"playerNames"`
+		PlayerScores []int    `json:"playerScores"`
+	} `json:"playerInfo"`
+	GameInfo struct {
+		Turn        int  `json:"turn"`
+		GameTurn    int  `json:"gameTurn"`
+		GameEnded   bool `json:"gameEnded"`
+		WordsPlayed []struct {
+			Word     string `json:"word"`
+			Score    int    `json:"score"`
+			PlayerId int    `json:"playerId"`
+		}
+	} `json:"gameInfo"`
 }
 
 type WordSet map[string]struct{}
 
-func PathDecodePathFromJson(b []byte) Path {
+func PathDecodePathFromJson(b []byte) []Position {
 	var pathJson PathJson
 	err := json.Unmarshal(b, &pathJson)
 	if err != nil {
@@ -69,56 +79,82 @@ var vowels = [...]rune{'a', 'e', 'i', 'o', 'u'}
 var consonents = [...]rune{'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'y', 'z'}
 var letterScores = [...]int{1, 4, 5, 3, 1, 5, 3, 4, 1, 7, 6, 3, 4, 2, 1, 4, 8, 2, 2, 2, 4, 5, 5, 7, 4, 8}
 
-func RandomLetter() rune {
+func RandomLetter() Letter {
 	n := rand.Intn(26)
 	for rand.Intn(letterScores[n]) != 0 {
 		n = rand.Intn(26)
 	}
-	return alphabet[n]
+	return Letter(n)
 }
 
-func GameRandomiseBoard(game *Game) {
+func GameRandomiseBoard(game *GameInfo, tripleLetter bool, doubleWord bool) {
 	for y := range 6 {
 		for x := range 6 {
-			game.board[y][x] = RandomLetter()
+			game.BoardInfo.Board[y][x] = RandomLetter()
 		}
+	}
+	if tripleLetter {
+		game.BoardInfo.DoubleLetterMult = 3
+	} else {
+		game.BoardInfo.DoubleLetterMult = 2
+	}
+	game.BoardInfo.DoubleLetter = PositionRand()
+	if doubleWord {
+		game.BoardInfo.DoubleWord = PositionRand()
+	} else {
+		game.BoardInfo.DoubleWord = Position{X: -1, Y: -1}
 	}
 }
 
-func GameTurn(game *Game, path Path) bool {
-	if !ValidPath(wordset, game, path) {
-		return false
-	}
-	score := ScorePath(game, path)
-	game.playerScores[game.playerCount] = score
+func GameRandomisePath(game *GameInfo, path []Position, tripleLetter bool, doubleWord bool) {
 
-	if slices.Contains(path, game.dw) {
-		game.dw = PositionRand()
-		for PositionEqual(game.dw, game.dl) {
-			game.dw = PositionRand()
+	if doubleWord {
+		if slices.Contains(path, game.BoardInfo.DoubleWord) {
+			game.BoardInfo.DoubleWord = PositionRand()
+			for PositionEqual(game.BoardInfo.DoubleWord, game.BoardInfo.DoubleLetter) {
+				game.BoardInfo.DoubleWord = PositionRand()
+			}
+		}
+		if PositionEqual(game.BoardInfo.DoubleWord, Position{-1, -1}) {
+			game.BoardInfo.DoubleWord = PositionRand()
 		}
 	}
-	if slices.Contains(path, game.dl) {
-		game.dl = PositionRand()
-		for PositionEqual(game.dw, game.dl) {
-			game.dl = PositionRand()
+	if slices.Contains(path, game.BoardInfo.DoubleLetter) {
+		game.BoardInfo.DoubleLetter = PositionRand()
+		for PositionEqual(game.BoardInfo.DoubleWord, game.BoardInfo.DoubleLetter) {
+			game.BoardInfo.DoubleLetter = PositionRand()
+		}
+		if !tripleLetter || rand.Int()%2 == 0 {
+			game.BoardInfo.DoubleLetterMult = 2
+		} else {
+			game.BoardInfo.DoubleLetterMult = 3
 		}
 	}
 
 	for _, p := range path {
-		game.board[p.Y][p.X] = RandomLetter()
+		game.BoardInfo.Board[p.Y][p.X] = RandomLetter()
+	}
+}
+
+func GameTurn(game *GameInfo, path []Position) bool {
+	if !ValidPath(wordset, game, path) {
+		return false
+	}
+	score := ScorePath(game, path)
+	game.PlayerInfo.PlayerScores[game.GameInfo.Turn] += score
+
+	game.GameInfo.Turn++
+	if game.GameInfo.Turn > len(game.PlayerInfo.PlayerNames) {
+		game.GameInfo.Turn = 0
+		game.GameInfo.GameTurn += 1
 	}
 
-	game.turn++
-	game.turn %= game.playerCount
+	GameRandomisePath(game, path, game.GameInfo.GameTurn > 0, game.GameInfo.GameTurn > 0)
 
 	return true
 }
 
-func GameScrambleBoard(game *Game) {
-
-	var temp rune
-
+func GameScrambleBoard(game *GameInfo) {
 	for y := range 6 {
 		for x := range 6 {
 			i := x + y*6
@@ -129,37 +165,35 @@ func GameScrambleBoard(game *Game) {
 			rx := j % 6
 			ry := j / 6
 
-			if game.dl.X == rx && game.dl.Y == ry {
-				game.dl.X = x
-				game.dl.Y = y
-			}
-			if game.dl.X == x && game.dl.Y == y {
-				game.dl.X = rx
-				game.dl.Y = ry
-			}
-
-			if game.dw.X == rx && game.dw.Y == ry {
-				game.dw.X = x
-				game.dw.Y = y
-			}
-			if game.dw.X == x && game.dw.Y == y {
-				game.dw.X = rx
-				game.dw.Y = ry
+			if game.BoardInfo.DoubleLetter.X == rx && game.BoardInfo.DoubleLetter.Y == ry {
+				game.BoardInfo.DoubleLetter.X = x
+				game.BoardInfo.DoubleLetter.Y = y
+			} else if game.BoardInfo.DoubleLetter.X == x && game.BoardInfo.DoubleLetter.Y == y {
+				game.BoardInfo.DoubleLetter.X = rx
+				game.BoardInfo.DoubleLetter.Y = ry
 			}
 
-			temp = game.board[y][x]
+			if game.BoardInfo.DoubleWord.X == rx && game.BoardInfo.DoubleWord.Y == ry {
+				game.BoardInfo.DoubleWord.X = x
+				game.BoardInfo.DoubleWord.Y = y
+			} else if game.BoardInfo.DoubleWord.X == x && game.BoardInfo.DoubleWord.Y == y {
+				game.BoardInfo.DoubleWord.X = rx
+				game.BoardInfo.DoubleWord.Y = ry
+			}
 
-			game.board[y][x] = game.board[ry][rx]
-			game.board[ry][rx] = temp
+			temp := game.BoardInfo.Board[y][x]
+
+			game.BoardInfo.Board[y][x] = game.BoardInfo.Board[ry][rx]
+			game.BoardInfo.Board[ry][rx] = temp
 		}
 	}
 }
 
-func SwapTile(board *Board, p Position, r rune) {
-	(*board)[p.Y][p.X] = r
+func SwapTile(game *GameInfo, p Position, l Letter) {
+	*&game.BoardInfo.Board[p.Y][p.X] = l
 }
 
-func ValidPath(wordset WordSet, game *Game, path Path) bool {
+func ValidPath(wordset WordSet, game *GameInfo, path []Position) bool {
 
 	var word strings.Builder
 	used := [6][6]bool{
@@ -187,7 +221,7 @@ func ValidPath(wordset WordSet, game *Game, path Path) bool {
 			return false
 		}
 		used[p.Y][p.X] = true
-		word.WriteRune(game.board[p.Y][p.X])
+		word.WriteRune(alphabet[game.BoardInfo.Board[p.Y][p.X]])
 
 		last = p
 	}
@@ -197,23 +231,19 @@ func ValidPath(wordset WordSet, game *Game, path Path) bool {
 	return ok
 }
 
-func ScorePath(game *Game, path Path) int {
+func ScorePath(game *GameInfo, path []Position) int {
 
 	doubleScore := false
 
 	score := 0
 
 	for _, p := range path {
-		char := game.board[p.Y][p.X]
-		letterScore := letterScores[int(char-'a')]
-		if PositionEqual(game.dl, p) {
-			if game.letter_multiplier_3x {
-				letterScore *= 3
-			} else {
-				letterScore *= 2
-			}
+		letter := game.BoardInfo.Board[p.Y][p.X]
+		letterScore := letterScores[letter]
+		if PositionEqual(game.BoardInfo.DoubleLetter, p) {
+			letterScore *= game.BoardInfo.DoubleLetterMult
 		}
-		if PositionEqual(game.dw, p) {
+		if PositionEqual(game.BoardInfo.DoubleWord, p) {
 			doubleScore = true
 		}
 		score += letterScore
