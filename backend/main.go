@@ -12,6 +12,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
+	_ "github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -20,60 +22,20 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-type PlayerList struct {
-	playerId         []int
-	playerNames      []string
-	playerConnection []*websocket.Conn
-}
-
-var playerList PlayerList
-var id int = 0
-
-func join(w http.ResponseWriter, r *http.Request) {
-	log.Println("Websocket Opened")
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	_ = conn
-
-	err = conn.WriteJSON(gameInfo)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// TODO: add a player id system for session tokens
-	// TODO: add a way of players inputing a name
-	// TODO: add a way for players to change their name
-
-	playerList.playerId = append(playerList.playerId, id)
-	id++
-	playerList.playerNames = append(playerList.playerNames, "frank")
-	playerList.playerConnection = append(playerList.playerConnection, conn)
-
-	gameInfo.PlayerInfo.PlayerNames = playerList.playerNames
-	gameInfo.PlayerInfo.PlayerScores = append(gameInfo.PlayerInfo.PlayerScores, 0)
-}
-
-func readLoop(c *websocket.Conn) {
-	for {
-		if messageType, r, err := c.NextReader(); err != nil || messageType != websocket.TextMessage {
-			c.Close()
-			break
-		} else {
-			bytes, err := io.ReadAll(r)
-			if err != nil {
-				log.Panicln(err)
-				continue
-			}
-			log.Panicln(string(bytes))
-		}
-	}
-}
-
 func makeTurn(w http.ResponseWriter, r *http.Request) {
+	token, err := r.Cookie("session")
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	playerUUID := uuid.MustParse(token.Value)
+	_, index := getPlayerByUUID(playerUUID)
+
+	if gameInfo.GameInfo.Turn != index {
+		w.WriteHeader(400)
+		return
+	}
+
 	bytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Println("failed to read request")
@@ -83,16 +45,17 @@ func makeTurn(w http.ResponseWriter, r *http.Request) {
 
 	log.Println(string(bytes))
 	path := PathDecodePathFromJson(bytes)
-	if !ValidPath(wordset, &gameInfo, path) {
+	word, ok := ValidPath(wordset, &gameInfo, path)
+	if !ok {
 		log.Println("invalid path")
 
-		response := "{\"is_word\": false, \"score\": 0}"
+		response := "{\"isWord\": false, \"score\": 0}"
 		w.Write([]byte(response))
 		return
 	}
 
 	score := ScorePath(&gameInfo, path)
-	response := fmt.Sprintf("{\"is_word\": true, \"score\": %d}", score)
+	response := fmt.Sprintf("{\"isWgord\": true, \"score\": %d}", score)
 	_, err = w.Write([]byte(response))
 	if err != nil {
 		w.WriteHeader(500)
@@ -100,10 +63,13 @@ func makeTurn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gameInfo.PlayerInfo.PlayerScores[gameInfo.GameInfo.Turn] += score
+	gameInfo.PlayerInfo.Players[gameInfo.GameInfo.Turn].PlayerScore += score
+	wordPlayed := WordPlayed{Word: word, Score: score, PlayerName: gameInfo.PlayerInfo.Players[gameInfo.GameInfo.Turn].PlayerName}
+
+	gameInfo.GameInfo.WordsPlayed = append(gameInfo.GameInfo.WordsPlayed, wordPlayed)
 
 	gameInfo.GameInfo.Turn++
-	if gameInfo.GameInfo.Turn >= len(gameInfo.PlayerInfo.PlayerNames) {
+	if gameInfo.GameInfo.Turn >= len(gameInfo.PlayerInfo.Players) {
 		gameInfo.GameInfo.Turn = 0
 		gameInfo.GameInfo.GameTurn += 1
 	}
@@ -112,12 +78,87 @@ func makeTurn(w http.ResponseWriter, r *http.Request) {
 	SendNewGameInfo()
 }
 
+func shuffle(w http.ResponseWriter, r *http.Request) {
+	token, err := r.Cookie("session")
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	playerUUID := uuid.MustParse(token.Value)
+	player, index := getPlayerByUUID(playerUUID)
+
+	if gameInfo.GameInfo.Turn != index {
+		w.Write([]byte("{\"message\": Not Your Turn}"))
+		return
+	}
+	if player.PlayerGems < 1 {
+		w.Write([]byte("{\"message\": Not Enough Gems}"))
+		return
+	}
+
+	gameInfo.PlayerInfo.Players[index].PlayerGems -= 1
+
+	GameScrambleBoard(&gameInfo)
+	SendNewGameInfo()
+}
+
+func swap(w http.ResponseWriter, r *http.Request) {
+	token, err := r.Cookie("session")
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	bytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Println("failed to read request")
+		w.WriteHeader(500)
+		return
+	}
+
+	var info struct {
+		Pos    Position `json:"position"`
+		Letter Letter   `json:"letter"`
+	}
+
+	err = json.Unmarshal(bytes, &info)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	playerUUID := uuid.MustParse(token.Value)
+	player, index := getPlayerByUUID(playerUUID)
+
+	if gameInfo.GameInfo.Turn != index {
+		w.Write([]byte("{\"message\": Not Your Turn}"))
+		return
+	}
+	if player.PlayerGems < 3 {
+		w.Write([]byte("{\"message\": Not Enough Gems}"))
+		return
+	}
+
+	gameInfo.PlayerInfo.Players[index].PlayerGems -= 3
+	GameSwapTile(&gameInfo, info.Pos, info.Letter)
+	SendNewGameInfo()
+}
+
 func SendNewGameInfo() {
-	for _, conn := range playerList.playerConnection {
+	for index, playerData := range gameInfo.PlayerInfo.Players {
+		conn := playerData.playerConn
 		if conn == nil {
 			continue
 		}
-		err := conn.WriteJSON(gameInfo)
+		var sendInfo struct {
+			YourTurn int       `json:"yourTurn"`
+			GameData *GameInfo `json:"gameInfo"`
+		}
+
+		sendInfo.YourTurn = index
+		sendInfo.GameData = &gameInfo
+
+		err := conn.WriteJSON(sendInfo)
 		if err != nil {
 			conn.Close()
 			conn = nil
@@ -182,12 +223,15 @@ func main() {
 	}()
 
 	// Serve static files from frontend build
-	fs := http.FileServer(http.Dir("../frontend/dist"))
-	http.Handle("/", fs)
+	fs := os.DirFS("../frontend/dist")
+	http.Handle("/", http.FileServerFS(fs))
 
+	http.HandleFunc("/session", session)
 	http.HandleFunc("/join", join)
+	http.HandleFunc("/setName", setName)
 	http.HandleFunc("/board", getBoard)
 	http.HandleFunc("/turn", makeTurn)
+	http.HandleFunc("/shuffle", shuffle)
 
 	log.Printf("listening on port %s", server.Addr)
 	log.Fatal(server.ListenAndServe())

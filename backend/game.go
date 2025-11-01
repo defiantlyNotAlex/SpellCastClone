@@ -6,6 +6,9 @@ import (
 	"math/rand"
 	"slices"
 	"strings"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 type Position struct {
@@ -38,6 +41,13 @@ type Letter int
 
 var gameInfo GameInfo
 
+type PlayerData struct {
+	PlayerName  string `json:"name"`
+	PlayerScore int    `json:"score"`
+	PlayerGems  int    `json:"gems"`
+	playerId    uuid.UUID
+	playerConn  *websocket.Conn
+}
 type GameInfo struct {
 	BoardInfo struct {
 		Board            [6][6]Letter `json:"board"`
@@ -46,19 +56,20 @@ type GameInfo struct {
 		DoubleLetterMult int          `json:"doubleLetterMult"`
 	} `json:"boardInfo"`
 	PlayerInfo struct {
-		PlayerNames  []string `json:"playerNames"`
-		PlayerScores []int    `json:"playerScores"`
+		Players []PlayerData `json:"players"`
 	} `json:"playerInfo"`
 	GameInfo struct {
-		Turn        int  `json:"turn"`
-		GameTurn    int  `json:"gameTurn"`
-		GameEnded   bool `json:"gameEnded"`
-		WordsPlayed []struct {
-			Word     string `json:"word"`
-			Score    int    `json:"score"`
-			PlayerId int    `json:"playerId"`
-		}
+		Turn        int          `json:"turn"`
+		GameTurn    int          `json:"gameTurn"`
+		GameEnded   bool         `json:"gameEnded"`
+		WordsPlayed []WordPlayed `json:"wordsPlayed"`
 	} `json:"gameInfo"`
+}
+
+type WordPlayed struct {
+	Word       string `json:"word"`
+	Score      int    `json:"score"`
+	PlayerName string `json:"playerName"`
 }
 
 type WordSet map[string]struct{}
@@ -137,14 +148,14 @@ func GameRandomisePath(game *GameInfo, path []Position, tripleLetter bool, doubl
 }
 
 func GameTurn(game *GameInfo, path []Position) bool {
-	if !ValidPath(wordset, game, path) {
+	if _, ok := ValidPath(wordset, game, path); !ok {
 		return false
 	}
 	score := ScorePath(game, path)
-	game.PlayerInfo.PlayerScores[game.GameInfo.Turn] += score
+	game.PlayerInfo.Players[game.GameInfo.Turn].PlayerScore += score
 
 	game.GameInfo.Turn++
-	if game.GameInfo.Turn > len(game.PlayerInfo.PlayerNames) {
+	if game.GameInfo.Turn > len(game.PlayerInfo.Players) {
 		game.GameInfo.Turn = 0
 		game.GameInfo.GameTurn += 1
 	}
@@ -189,13 +200,13 @@ func GameScrambleBoard(game *GameInfo) {
 	}
 }
 
-func SwapTile(game *GameInfo, p Position, l Letter) {
-	*&game.BoardInfo.Board[p.Y][p.X] = l
+func GameSwapTile(game *GameInfo, p Position, l Letter) {
+	game.BoardInfo.Board[p.Y][p.X] = l
 }
 
-func ValidPath(wordset WordSet, game *GameInfo, path []Position) bool {
+func ValidPath(wordset WordSet, game *GameInfo, path []Position) (string, bool) {
 
-	var word strings.Builder
+	var wordBuilder strings.Builder
 	used := [6][6]bool{
 		{false, false, false, false, false, false},
 		{false, false, false, false, false, false},
@@ -206,7 +217,7 @@ func ValidPath(wordset WordSet, game *GameInfo, path []Position) bool {
 	}
 
 	if len(path) == 0 || len(path) > 6*6 {
-		return false
+		return "", false
 	}
 
 	last := path[0]
@@ -214,21 +225,21 @@ func ValidPath(wordset WordSet, game *GameInfo, path []Position) bool {
 
 		// already used the tile
 		if used[p.Y][p.X] {
-			return false
+			return "", false
 		}
 		// tile adjacent to the last tile in the path
 		if !PositionAdjacent(last, p) {
-			return false
+			return "", false
 		}
 		used[p.Y][p.X] = true
-		word.WriteRune(alphabet[game.BoardInfo.Board[p.Y][p.X]])
+		wordBuilder.WriteRune(alphabet[game.BoardInfo.Board[p.Y][p.X]])
 
 		last = p
 	}
+	word := wordBuilder.String()
+	_, ok := wordset[word]
 
-	_, ok := wordset[word.String()]
-
-	return ok
+	return word, ok
 }
 
 func ScorePath(game *GameInfo, path []Position) int {
