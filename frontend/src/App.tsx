@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import './App.css'
 
 const alphabet = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"];
-//const scores = [1, 4, 5, 3, 1, 5, 3, 4, 1, 7, 6, 3, 4, 2, 1, 4, 8, 2, 2, 2, 4, 5, 5, 7, 4, 8];
+const scores = [1, 4, 5, 3, 1, 5, 3, 4, 1, 7, 6, 3, 4, 2, 1, 4, 8, 2, 2, 2, 4, 5, 5, 7, 4, 8];
 
 class Position {
   x: number = 0;
@@ -24,21 +24,26 @@ const false_board = [[false, false, false, false, false, false], [false, false, 
 
 function App() {
   const [board, setBoard] = useState<number[][]>([[0, 1, 2, 3, 4, 5], [6, 7, 8, 9, 10, 11], [12, 13, 14, 15, 16, 17], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]])
-  const [_doubleLetter, setDoubleLetter] = useState<number[] | null>([0, 0])
-  const [_doubleWord, setDoubleWord] = useState<number[] | null>(null)
+  const [doubleLetter, setDoubleLetter] = useState<{x: number, y: number}>({x: 0, y: 0})
+  const [doubleWord, setDoubleWord] = useState<{x: number, y: number}>({x: -1, y: -1})
+  const [doubleLetterMult, setDoubleLetterMult] = useState(2)
+  const [gemPositions, setGemPositions] = useState<{x: number, y: number}[]>([])
+
   const [current_word, setCurrentWord] = useState("")
   const [used, setUsed] = useState<boolean[][]>(false_board)
   const [last_pos, setLastPos] = useState<Position | undefined>()
   const [path, setPath] = useState<Position[]>([])
   const [_ws, setWs] = useState<WebSocket | null>(null);
 
-  const [gameData, setGameData] = useState<{turn: number, gameTurn: number, wordsPlayed: any[]}>({turn: 0, gameTurn: 0, wordsPlayed: []})
+  const [gameData, setGameData] = useState<{turn: number, gameTurn: number, wordsPlayed: {word: string, score: number, playerName: string}[]}>({turn: 0, gameTurn: 0, wordsPlayed: []})
   const [myTurn, setMyTurn] = useState<number>(0)
   const [players, setPlayers] = useState<{name: string, score: number, gems: number}[]>([])
 
   const [swapX, setSwapX] = useState(0)
   const [swapY, setSwapY] = useState(0)
   const [letter, setLetter] = useState(0)
+
+  const [name, setName] = useState("")
 
   useEffect(() => {
     fetch('http://localhost:8080/session', {})
@@ -48,16 +53,20 @@ function App() {
 
     websocket.onopen = () => console.log('Connected to WebSocket server');
     websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      const game = data.gameInfo
-      console.log(data)
+      const data = JSON.parse(event.data);
+      const game = data.gameInfo;
+      console.log(data);
 
-      setMyTurn(data.yourTurn)
-      setBoard(game.boardInfo.board)
-      setDoubleLetter(game.boardInfo.doubleLetter)
-      setDoubleWord(game.boardInfo.doubleWord)
-      setPlayers(game.playerInfo.players)
-      setGameData(game.gameInfo)
+      setMyTurn(data.yourTurn);
+
+      setBoard(game.boardInfo.board);
+      setDoubleLetter(game.boardInfo.doubleLetter);
+      setDoubleWord(game.boardInfo.doubleWord);
+      setDoubleLetterMult(game.boardInfo.doubleLetterMult);
+      setGemPositions(game.boardInfo.gemPositions);
+
+      setPlayers(game.playerInfo.players);
+      setGameData(game.gameInfo);
     };
     websocket.onclose = () => console.log('Disconnected from WebSocket server');
 
@@ -85,12 +94,14 @@ function App() {
                 {row.map((val, x) =>
                   <td>
                       <button 
+                        className='cell'
                         style={{
                           outlineColor: used[y][x] ? "red" : "black",
                           outlineWidth: 2,
                           outlineStyle: 'solid',
-                          width: 40,
-                          height: 40,
+                          width: 60,
+                          height: 60, 
+                          backgroundColor: (x == doubleWord.x && y == doubleWord.y) ? "lightblue" : undefined,
                         }}
                         disabled={
                           used[y][x] 
@@ -104,9 +115,14 @@ function App() {
                           used2[y][x] = true;
                           setUsed(used2)
                           setLastPos(new Position(x, y));
-                        }}
-                      >
+                        }}>
                         {alphabet[val]}
+                        <br/>
+                        <span className='gem'>{gemPositions.find((p, _i, _obj) => p.x == x && p.y == y) !== undefined ? "(G)" : ""}</span>
+                        <span className='score' style={{color: (x == doubleLetter.x && y == doubleLetter.y) ? doubleLetterMult === 2 ? "blue" : "red" : undefined}}>
+                          [{scores[letter] * ((x == doubleLetter.x && y == doubleLetter.y) ? doubleLetterMult : 1)}]
+                        </span>
+                        
                       </button>
                   </td>
                 )}
@@ -154,8 +170,17 @@ function App() {
           }}>swap</button>
         </div>
         <div className="right">
+          <input onChange={e => setName(e.target.value)}/>
+          <button onClick={() => {
+              fetch('setName', {method: "POST", body: JSON.stringify({name: name})}).catch(error => console.error(error))
+          }}>change name</button>
           {players.map((player, i) => 
             <li><p style={{color: gameData.turn == i ? "red" : undefined}}>{player.name}: score {player.score}, gems: {player.gems}</p></li>
+          )}
+        </div>
+        <div className="wordsList">
+          {gameData.wordsPlayed.map((row, _i) => 
+            <li><p>{row.playerName} : {row.word} | {row.score}</p></li>
           )}
         </div>
       </div>

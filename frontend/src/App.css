@@ -13,7 +13,17 @@
   padding: 30px;
   margin: 10px;
 }
-
+.gem {
+  font-size: 10px;
+  color: purple;
+}
+.score {
+  font-size: 10px;
+  color: grey;
+}
+.cell {
+  padding: 5px;
+}
 .logo {
   height: 6em;
   padding: 1.5em;
