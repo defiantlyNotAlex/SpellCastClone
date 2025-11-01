@@ -47,8 +47,8 @@ function App() {
 
   useEffect(() => {
     // ew
-    fetch('http://localhost:8080/session', {}).then(() => {
-      const websocket = new WebSocket('ws://localhost:8080/join');
+    fetch('/session', {}).then(() => {
+      const websocket = new WebSocket('/join');
       setWs(websocket);
 
       websocket.onopen = () => console.log('Connected to WebSocket server');
@@ -121,7 +121,7 @@ function App() {
                         <br/>
                         <span className='gem'>{gemPositions.find((p, _i, _obj) => p.x == x && p.y == y) !== undefined ? "(G)" : ""}</span>
                         <span className='score' style={{color: (x == doubleLetter.x && y == doubleLetter.y) ? doubleLetterMult === 2 ? "blue" : "red" : undefined}}>
-                          [{scores[letter] * ((x == doubleLetter.x && y == doubleLetter.y) ? doubleLetterMult : 1)}]
+                          [{scores[val] * ((x === doubleLetter.x && y === doubleLetter.y) ? doubleLetterMult : 1)}]
                         </span>
                         
                       </button>
