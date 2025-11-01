@@ -46,32 +46,33 @@ function App() {
   const [name, setName] = useState("")
 
   useEffect(() => {
-    fetch('http://localhost:8080/session', {})
+    // ew
+    fetch('http://localhost:8080/session', {}).then(() => {
+      const websocket = new WebSocket('ws://localhost:8080/join');
+      setWs(websocket);
 
-    const websocket = new WebSocket('ws://localhost:8080/join');
-    setWs(websocket);
+      websocket.onopen = () => console.log('Connected to WebSocket server');
+      websocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const game = data.gameInfo;
+        console.log(data);
 
-    websocket.onopen = () => console.log('Connected to WebSocket server');
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      const game = data.gameInfo;
-      console.log(data);
+        setMyTurn(data.yourTurn);
 
-      setMyTurn(data.yourTurn);
+        setBoard(game.boardInfo.board);
+        setDoubleLetter(game.boardInfo.doubleLetter);
+        setDoubleWord(game.boardInfo.doubleWord);
+        setDoubleLetterMult(game.boardInfo.doubleLetterMult);
+        setGemPositions(game.boardInfo.gemPositions);
 
-      setBoard(game.boardInfo.board);
-      setDoubleLetter(game.boardInfo.doubleLetter);
-      setDoubleWord(game.boardInfo.doubleWord);
-      setDoubleLetterMult(game.boardInfo.doubleLetterMult);
-      setGemPositions(game.boardInfo.gemPositions);
+        setPlayers(game.playerInfo.players);
+        setGameData(game.gameInfo);
+      };
+      websocket.onclose = () => console.log('Disconnected from WebSocket server');
 
-      setPlayers(game.playerInfo.players);
-      setGameData(game.gameInfo);
-    };
-    websocket.onclose = () => console.log('Disconnected from WebSocket server');
-
-    // Cleanup on unmount
-    return () => websocket.close();
+      // Cleanup on unmount
+      return () => websocket.close();
+    });
   }, []);
 
   const resetBoard = () => {
@@ -169,7 +170,7 @@ function App() {
             }).catch(error => console.error(error));
           }}>swap</button>
           <br/>
-          {myTurn == 0 ? <button style={{backgroundColor: "red"}}onClick={() => fetch('reset', {})}>reset (host only)</button> : <></>}
+          {myTurn == 0 ? <button style={{backgroundColor: "red"}} onClick={() => fetch('reset', {})}>reset (host only)</button> : <></>}
         </div>
         <div className="right">
           <input onChange={e => setName(e.target.value)}/>
@@ -177,7 +178,10 @@ function App() {
               fetch('setName', {method: "POST", body: JSON.stringify({name: name})}).catch(error => console.error(error))
           }}>change name</button>
           {players.map((player, i) => 
-            <li><span style={{color: gameData.turn == i ? "red" : undefined}}>{player.name}: score {player.score}, gems: {player.gems}</span></li>
+            <li>
+              <span style={{color: gameData.turn == i ? "red" : undefined}}>{player.name}: score {player.score}, gems: {player.gems}</span> 
+              {myTurn == 0 && i != 0 ? <button style={{backgroundColor: "red"}} onClick={() => fetch('/kick', {method: "POST", body: JSON.stringify({index: i})})}>kick (host only)</button> : <></>}
+            </li>
           )}
         </div>
         <div className="wordsList">

@@ -221,6 +221,46 @@ func reset(w http.ResponseWriter, r *http.Request) {
 	initGame(&gameInfo)
 	SendNewGameInfo()
 }
+func kick(w http.ResponseWriter, r *http.Request) {
+	token, err := r.Cookie("session")
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	playerUUID := uuid.MustParse(token.Value)
+	_, index := getPlayerByUUID(playerUUID)
+
+	if index != 0 {
+		w.Write([]byte("{\"message\": Only Host Can Reset}"))
+		return
+	}
+
+	bytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Println("failed to read request")
+		w.WriteHeader(500)
+		return
+	}
+
+	var info struct {
+		Index int `json:"index"`
+	}
+
+	err = json.Unmarshal(bytes, &info)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+	gameInfo.PlayerInfo.Players[info.Index].playerConn.Close()
+
+	s := gameInfo.PlayerInfo.Players
+	gameInfo.PlayerInfo.Players = append(s[:info.Index], s[info.Index+1:]...)
+	if gameInfo.GameInfo.Turn > len(gameInfo.PlayerInfo.Players) {
+		gameInfo.GameInfo.Turn %= len(gameInfo.PlayerInfo.Players)
+	}
+	SendNewGameInfo()
+}
 
 func main() {
 	initWordset()
@@ -253,8 +293,8 @@ func main() {
 	http.HandleFunc("/shuffle", shuffle)
 	http.HandleFunc("/swap", swap)
 	http.HandleFunc("/reset", reset)
+	http.HandleFunc("/kick", kick)
 
 	log.Printf("listening on port %s", server.Addr)
 	log.Fatal(server.ListenAndServe())
-
 }
