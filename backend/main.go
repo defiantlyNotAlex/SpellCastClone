@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/google/uuid"
-	_ "github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
