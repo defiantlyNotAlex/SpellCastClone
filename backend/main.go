@@ -54,8 +54,8 @@ func makeTurn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	score := ScorePath(&gameInfo, path)
-	response := fmt.Sprintf("{\"isWgord\": true, \"score\": %d}", score)
+	score, gems := ScorePath(&gameInfo, path)
+	response := fmt.Sprintf("{\"isWord\": true, \"score\": %d}", score)
 	_, err = w.Write([]byte(response))
 	if err != nil {
 		w.WriteHeader(500)
@@ -64,6 +64,7 @@ func makeTurn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	gameInfo.PlayerInfo.Players[gameInfo.GameInfo.Turn].PlayerScore += score
+	gameInfo.PlayerInfo.Players[gameInfo.GameInfo.Turn].PlayerGems += gems
 	wordPlayed := WordPlayed{Word: word, Score: score, PlayerName: gameInfo.PlayerInfo.Players[gameInfo.GameInfo.Turn].PlayerName}
 
 	gameInfo.GameInfo.WordsPlayed = append(gameInfo.GameInfo.WordsPlayed, wordPlayed)
@@ -232,6 +233,7 @@ func main() {
 	http.HandleFunc("/board", getBoard)
 	http.HandleFunc("/turn", makeTurn)
 	http.HandleFunc("/shuffle", shuffle)
+	http.HandleFunc("/swap", swap)
 
 	log.Printf("listening on port %s", server.Addr)
 	log.Fatal(server.ListenAndServe())

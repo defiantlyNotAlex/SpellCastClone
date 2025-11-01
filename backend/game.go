@@ -54,6 +54,7 @@ type GameInfo struct {
 		DoubleLetter     Position     `json:"doubleLetter"`
 		DoubleWord       Position     `json:"doubleWord"`
 		DoubleLetterMult int          `json:"doubleLetterMult"`
+		GemPositions     []Position   `json:"gemPositions"`
 	} `json:"boardInfo"`
 	PlayerInfo struct {
 		Players []PlayerData `json:"players"`
@@ -115,6 +116,15 @@ func GameRandomiseBoard(game *GameInfo, tripleLetter bool, doubleWord bool) {
 	} else {
 		game.BoardInfo.DoubleWord = Position{X: -1, Y: -1}
 	}
+
+	game.BoardInfo.GemPositions = []Position{}
+	for range 10 {
+		var pos Position = PositionRand()
+		for slices.Contains(game.BoardInfo.GemPositions, pos) {
+			pos = PositionRand()
+		}
+		game.BoardInfo.GemPositions = append(game.BoardInfo.GemPositions, pos)
+	}
 }
 
 func GameRandomisePath(game *GameInfo, path []Position, tripleLetter bool, doubleWord bool) {
@@ -142,27 +152,21 @@ func GameRandomisePath(game *GameInfo, path []Position, tripleLetter bool, doubl
 		}
 	}
 
+	for i, gemPos := range game.BoardInfo.GemPositions {
+		if slices.Contains(path, gemPos) {
+			game.BoardInfo.GemPositions[i] = Position{X: -1, Y: -1}
+			var pos Position
+			pos = PositionRand()
+			for slices.Contains(game.BoardInfo.GemPositions, pos) {
+				pos = PositionRand()
+			}
+			game.BoardInfo.GemPositions[i] = pos
+		}
+	}
+
 	for _, p := range path {
 		game.BoardInfo.Board[p.Y][p.X] = RandomLetter()
 	}
-}
-
-func GameTurn(game *GameInfo, path []Position) bool {
-	if _, ok := ValidPath(wordset, game, path); !ok {
-		return false
-	}
-	score := ScorePath(game, path)
-	game.PlayerInfo.Players[game.GameInfo.Turn].PlayerScore += score
-
-	game.GameInfo.Turn++
-	if game.GameInfo.Turn > len(game.PlayerInfo.Players) {
-		game.GameInfo.Turn = 0
-		game.GameInfo.GameTurn += 1
-	}
-
-	GameRandomisePath(game, path, game.GameInfo.GameTurn > 0, game.GameInfo.GameTurn > 0)
-
-	return true
 }
 
 func GameScrambleBoard(game *GameInfo) {
@@ -242,11 +246,11 @@ func ValidPath(wordset WordSet, game *GameInfo, path []Position) (string, bool) 
 	return word, ok
 }
 
-func ScorePath(game *GameInfo, path []Position) int {
+func ScorePath(game *GameInfo, path []Position) (score int, gems int) {
 
 	doubleScore := false
-
-	score := 0
+	score = 0
+	gems = 0
 
 	for _, p := range path {
 		letter := game.BoardInfo.Board[p.Y][p.X]
@@ -256,6 +260,9 @@ func ScorePath(game *GameInfo, path []Position) int {
 		}
 		if PositionEqual(game.BoardInfo.DoubleWord, p) {
 			doubleScore = true
+		}
+		if slices.Contains(game.BoardInfo.GemPositions, p) {
+			gems++
 		}
 		score += letterScore
 	}
@@ -267,5 +274,5 @@ func ScorePath(game *GameInfo, path []Position) int {
 		score += 10
 	}
 
-	return score
+	return
 }

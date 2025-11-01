@@ -74,87 +74,90 @@ function App() {
 
   return (
     <>
-      <div>
-        <div style={{width: 40 * 6, height: 40}}>
-          <p>{current_word}</p>
-        </div>
-        <table>
-          {board.map((row, y) =>
-            <tr>
-              {row.map((val, x) =>
-                <td>
-                    <button 
-                      style={{
-                        outlineColor: used[y][x] ? "red" : "black",
-                        outlineWidth: 2,
-                        outlineStyle: 'solid',
-                        width: 40,
-                        height: 40,
-                      }}
-                      disabled={
-                        used[y][x] 
-                        || (last_pos !== undefined ? !(Math.abs(last_pos.x - x) <= 1 && Math.abs(last_pos.y - y) <= 1)  : false)
-                        || gameData.turn != myTurn
-                      }
-                      onClick={() => {
-                        setCurrentWord(current_word + alphabet[val]);
-                        setPath([...path, new Position(x, y)])
-                        var used2 = copy_board(used);
-                        used2[y][x] = true;
-                        setUsed(used2)
-                        setLastPos(new Position(x, y));
-                      }}
-                    >
-                      {alphabet[val]}
-                    </button>
-                </td>
-              )}
-            </tr>
-          )}
-        </table>
-        <button onClick={() => {
-          console.log(JSON.stringify({path: path}))
-          fetch('/turn', {
-            method: "POST",
-            body: JSON.stringify({path: path}),
-          })
-          .then(response => response.json())
-          .then(json => {if (!json.isWord) {alert("Not In Word List");}})
-          .catch(error => console.error(error));
+      <div className="gameRoot">
+        <div className="left">
+          <div style={{width: 40 * 6, height: 40}}>
+            <p>{current_word}</p>
+          </div>
+          <table>
+            {board.map((row, y) =>
+              <tr>
+                {row.map((val, x) =>
+                  <td>
+                      <button 
+                        style={{
+                          outlineColor: used[y][x] ? "red" : "black",
+                          outlineWidth: 2,
+                          outlineStyle: 'solid',
+                          width: 40,
+                          height: 40,
+                        }}
+                        disabled={
+                          used[y][x] 
+                          || (last_pos !== undefined ? !(Math.abs(last_pos.x - x) <= 1 && Math.abs(last_pos.y - y) <= 1)  : false)
+                          || gameData.turn != myTurn
+                        }
+                        onClick={() => {
+                          setCurrentWord(current_word + alphabet[val]);
+                          setPath([...path, new Position(x, y)])
+                          var used2 = copy_board(used);
+                          used2[y][x] = true;
+                          setUsed(used2)
+                          setLastPos(new Position(x, y));
+                        }}
+                      >
+                        {alphabet[val]}
+                      </button>
+                  </td>
+                )}
+              </tr>
+            )}
+          </table>
+          <button onClick={() => {
+            console.log(JSON.stringify({path: path}))
+            fetch('/turn', {
+              method: "POST",
+              body: JSON.stringify({path: path}),
+            })
+            .then(response => response.json())
+            .then(json => {console.log(json); if (!json.isWord) {alert("Not In Word List");}})
+            .catch(error => console.error(error));
 
-          resetBoard()
-        }}>submit</button>
-        <button onClick={() => {
-          resetBoard()
-        }}>clear</button>
-        <button onClick={() => {fetch('/shuffle', {})
-          .then(response => {
-            response.json().then(json => {if (json.message !== undefined) {alert(json.message)}})
-          }).catch(error => console.error(error));
-          resetBoard();
-        }}>
-          shuffle
-        </button>
-        <br/>
-        <input style={{width: 40}} onChange={e => setSwapX(parseInt(e.target.value))} type="number" defaultValue={0} max={5}/>
-        <input style={{width: 40}} onChange={e => setSwapY(parseInt(e.target.value))} type="number" defaultValue={0} max={5}/>
-        <select style={{width: 40}} onChange={e => setLetter(parseInt(e.target.value))} defaultValue={0}>
-          {alphabet.map((c, i) => 
-            <option value={i}>
-              {c}
-            </option>
+            resetBoard()
+          }}>submit</button>
+          <button onClick={() => {
+            resetBoard()
+          }}>clear</button>
+          <button onClick={() => {fetch('/shuffle', {})
+            .then(response => {
+              response.json().then(json => {if (json.message !== undefined) {alert(json.message)}})
+            }).catch(error => console.error(error));
+            resetBoard();
+          }}>
+            shuffle
+          </button>
+          <br/>
+          <input style={{width: 40}} onChange={e => setSwapX(parseInt(e.target.value))} type="number" defaultValue={0} max={5}/>
+          <input style={{width: 40}} onChange={e => setSwapY(parseInt(e.target.value))} type="number" defaultValue={0} max={5}/>
+          <select style={{width: 40}} onChange={e => setLetter(parseInt(e.target.value))} defaultValue={0}>
+            {alphabet.map((c, i) => 
+              <option value={i}>
+                {c}
+              </option>
+            )}
+          </select>
+          <button onClick={() => {
+            fetch('/swap', {method: "POST", body: JSON.stringify({position: {x: swapX, y: swapY}, letter: letter})})
+            .then(response => {
+              response.json().then(json => {if (json.message !== undefined) {alert(json.message)}})
+            }).catch(error => console.error(error));
+          }}>swap</button>
+        </div>
+        <div className="right">
+          {players.map((player, i) => 
+            <li><p style={{color: gameData.turn == i ? "red" : undefined}}>{player.name}: score {player.score}, gems: {player.gems}</p></li>
           )}
-        </select>
-        <button onClick={() => {fetch('/swap', {body: `{position: {x: ${swapX}, y: ${swapY}}, letter: ${letter}}`})
-          .then(response => {
-            response.json().then(json => {if (json.message !== undefined) {alert(json.message)}})
-          }).catch(error => console.error(error));
-        }}>swap</button>
-      </div>
-      <div>
-        {players.map((player, i) => 
-          <li><p style={{color: gameData.turn == i ? "red" : undefined}}>{player.name}: score {player.score}, gems: {player.gems}</p></li>
-        )}
+        </div>
       </div>
     </>
   )
