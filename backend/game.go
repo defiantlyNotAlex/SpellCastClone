@@ -41,6 +41,18 @@ type Letter int
 
 var gameInfo GameInfo
 
+func initGame(game *GameInfo) {
+	GameRandomiseBoard(game, false, false)
+	for i, _ := range game.PlayerInfo.Players {
+		game.PlayerInfo.Players[i].PlayerGems = 3
+		game.PlayerInfo.Players[i].PlayerScore = 0
+	}
+	game.GameInfo.GameEnded = false
+	game.GameInfo.GameTurn = 0
+	game.GameInfo.Turn = 0
+	game.GameInfo.WordsPlayed = []WordPlayed{}
+}
+
 type PlayerData struct {
 	PlayerName  string `json:"name"`
 	PlayerScore int    `json:"score"`
@@ -87,8 +99,6 @@ func PathDecodePathFromJson(b []byte) []Position {
 }
 
 var alphabet = [...]rune{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'}
-var vowels = [...]rune{'a', 'e', 'i', 'o', 'u'}
-var consonents = [...]rune{'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'y', 'z'}
 var letterScores = [...]int{1, 4, 5, 3, 1, 5, 3, 4, 1, 7, 6, 3, 4, 2, 1, 4, 8, 2, 2, 2, 4, 5, 5, 7, 4, 8}
 
 func RandomLetter() Letter {

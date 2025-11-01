@@ -196,7 +196,7 @@ type Turn struct {
 
 var wordset WordSet
 
-func init_wordset() {
+func initWordset() {
 	wordlist := GetWordList("wordlist.txt")
 	wordset = make(map[string]struct{})
 
@@ -204,10 +204,28 @@ func init_wordset() {
 		wordset[word] = struct{}{}
 	}
 }
+func reset(w http.ResponseWriter, r *http.Request) {
+	token, err := r.Cookie("session")
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	playerUUID := uuid.MustParse(token.Value)
+	_, index := getPlayerByUUID(playerUUID)
+
+	if index != 0 {
+		w.Write([]byte("{\"message\": Only Host Can Reset}"))
+		return
+	}
+
+	initGame(&gameInfo)
+	SendNewGameInfo()
+}
 
 func main() {
-	init_wordset()
-	GameRandomiseBoard(&gameInfo, false, false)
+	initWordset()
+	initGame(&gameInfo)
+	gameInfo.GameInfo.WordsPlayed = []WordPlayed{}
 
 	server := &http.Server{
 		Addr: ":8080",
@@ -234,6 +252,7 @@ func main() {
 	http.HandleFunc("/turn", makeTurn)
 	http.HandleFunc("/shuffle", shuffle)
 	http.HandleFunc("/swap", swap)
+	http.HandleFunc("/reset", reset)
 
 	log.Printf("listening on port %s", server.Addr)
 	log.Fatal(server.ListenAndServe())

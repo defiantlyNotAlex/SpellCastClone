@@ -168,6 +168,8 @@ function App() {
               response.json().then(json => {if (json.message !== undefined) {alert(json.message)}})
             }).catch(error => console.error(error));
           }}>swap</button>
+          <br/>
+          {myTurn == 0 ? <button style={{backgroundColor: "red"}}onClick={() => fetch('reset', {})}>reset (host only)</button> : <></>}
         </div>
         <div className="right">
           <input onChange={e => setName(e.target.value)}/>
@@ -175,13 +177,16 @@ function App() {
               fetch('setName', {method: "POST", body: JSON.stringify({name: name})}).catch(error => console.error(error))
           }}>change name</button>
           {players.map((player, i) => 
-            <li><p style={{color: gameData.turn == i ? "red" : undefined}}>{player.name}: score {player.score}, gems: {player.gems}</p></li>
+            <li><span style={{color: gameData.turn == i ? "red" : undefined}}>{player.name}: score {player.score}, gems: {player.gems}</span></li>
           )}
         </div>
         <div className="wordsList">
-          {gameData.wordsPlayed.map((row, _i) => 
-            <li><p>{row.playerName} : {row.word} | {row.score}</p></li>
-          )}
+          <p>Words Played</p>
+          <div>
+            {gameData.wordsPlayed.map((row, _i) => 
+              <li>{row.playerName} : {row.word} | {row.score}</li>
+            )}
+          </div>
         </div>
       </div>
     </>
